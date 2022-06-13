@@ -1,9 +1,8 @@
-
-
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/types.h>
+#include <linux/time.h>
 #include <linux/platform_device.h>
 #include <linux/freezer.h>
 #include <media/v4l2-ioctl.h>
@@ -57,7 +56,6 @@ struct dev_data {
 
 static int thread_function(void *data)
 {
-	
 	struct yuv_frame *V_BUF;
 	struct dev_data *dev = data;
 	struct yuv_dmaq *q = &dev->vidq;
@@ -65,13 +63,16 @@ static int thread_function(void *data)
 	unsigned long flags = 0;
 	unsigned long size;
 	void *vbuf;
+	//clock_t start, end;
+	//double cpu_time_used;
+
 	pr_info("Inside the function %s\n", __func__);
 	size = F_DATA.width * F_DATA.height << 1;
-	
 	v4l2_info(&dev->v4l2_dev, "%s: k_thread\n", __func__);
 
 	while (!kthread_should_stop()) {
 		DECLARE_WAITQUEUE(wait, current);
+
 		if (!get_flag())
 			continue;
 		V_BUF = get_frame();
@@ -87,7 +88,12 @@ static int thread_function(void *data)
 			list_del(&buf->list);
 			spin_unlock_irqrestore(&dev->s_lock, flags);
 			v4l2_info(&dev->v4l2_dev, "frame rate = %d, frame number = %d\n", F_DATA.framerate, V_BUF->frame_no);
+			//start = clock();
 			memcpy(vbuf, V_BUF->data, size);
+			//end = clock();
+			//cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+			//printk("time diff = %ld \n",cpu_time_used);
+			//printk("timestamp src: %s , timestamp dest: %s\n",V_BUF->data.timestamp , vbuf.timestamp);
 			buf->v4l2_buf.field = V4L2_FIELD_INTERLACED;
 			buf->v4l2_buf.sequence = dev->f_count++;
 			vb2_buffer_done(&buf->vb, VB2_BUF_STATE_DONE);
@@ -102,9 +108,9 @@ static int thread_function(void *data)
 
 static int queue_setup(struct vb2_queue *vq, unsigned int *nbuffers, unsigned int *nplanes, unsigned int sizes[], struct device *alloc_ctxs[])
 {
-	
 	struct dev_data *dev = vb2_get_drv_priv(vq);
-	unsigned long size; 
+	unsigned long size;
+
 	pr_info("Inside the function %s\n", __func__);
 	size = F_DATA.width * F_DATA.height << 1;
 	if (!get_frame()) {
@@ -120,10 +126,11 @@ static int queue_setup(struct vb2_queue *vq, unsigned int *nbuffers, unsigned in
 
 static int buffer_prepare(struct vb2_buffer *vb)
 {
-	
+
 	struct dev_data *dev = vb2_get_drv_priv(vb->vb2_queue);
 	struct yuv_buffer *buf = container_of(vb, struct yuv_buffer, vb);
 	unsigned long size = dev->width * dev->height * dev->pixelsize;
+
 	pr_info("Inside the function %s\n", __func__);
 	if (vb2_plane_size(vb, 0) < size) {
 		v4l2_err(&dev->v4l2_dev, "%s: vb2 plane size is less than required..\n", __func__);
@@ -136,11 +143,12 @@ static int buffer_prepare(struct vb2_buffer *vb)
 
 static void buffer_queue(struct vb2_buffer *vb)
 {
-	
+
 	struct dev_data *dev = vb2_get_drv_priv(vb->vb2_queue);
 	struct yuv_buffer *buf = container_of(vb, struct yuv_buffer, vb);
 	struct yuv_dmaq *vidq = &dev->vidq;
 	unsigned long flags = 0;
+
 	pr_info("Inside the function %s\n", __func__);
 	spin_lock_irqsave(&dev->s_lock, flags);
 	list_add_tail(&buf->list, &vidq->active);
@@ -149,9 +157,10 @@ static void buffer_queue(struct vb2_buffer *vb)
 
 static int start_streaming(struct vb2_queue *vq, unsigned int count)
 {
-	
+
 	struct dev_data *dev = vb2_get_drv_priv(vq);
 	struct yuv_dmaq *q = &dev->vidq;
+
 	pr_info("Inside the function %s\n", __func__);
 	dev->f_count = 0;
 	q->kthread = kthread_run(thread_function, dev, "%s", dev->v4l2_dev.name);
@@ -166,9 +175,10 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 
 static void stop_streaming(struct vb2_queue *vq)
 {
-	
+
 	struct dev_data *dev = vb2_get_drv_priv(vq);
 	struct yuv_dmaq *q = &dev->vidq;
+
 	pr_info("Inside the function %s\n", __func__);
 	if (q->kthread) {
 		kthread_stop(q->kthread);
@@ -177,6 +187,7 @@ static void stop_streaming(struct vb2_queue *vq)
 
 	while (!list_empty(&q->active)) {
 		struct yuv_buffer *buf;
+
 		buf = list_entry(q->active.next, struct yuv_buffer, list);
 		list_del(&buf->list);
 		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
@@ -195,8 +206,9 @@ static const struct vb2_ops yuv_qops = {
 
 static int vidioc_querycap(struct file *file, void  *priv, struct v4l2_capability *cap)
 {
-	
+
 	struct dev_data *dev = video_drvdata(file);
+
 	pr_info("Inside the function %s\n", __func__);
 	strcpy(cap->driver, KBUILD_MODNAME);
 	strcpy(cap->card, KBUILD_MODNAME);
@@ -220,9 +232,10 @@ static int vidioc_enum_fmt_vid_cap(struct file *file, void *priv, struct v4l2_fm
 
 static int vidioc_g_fmt_vid_cap(struct file *file, void *priv, struct v4l2_format *f)
 {
-	
+
 	struct dev_data *dev = video_drvdata(file);
 	pr_info("Inside the function %s\n", __func__);
+
 	f->fmt.pix.width = dev->width = F_DATA.width;
 	f->fmt.pix.height = dev->height = F_DATA.height;
 	f->fmt.pix.field = V4L2_FIELD_INTERLACED;
@@ -234,9 +247,10 @@ static int vidioc_g_fmt_vid_cap(struct file *file, void *priv, struct v4l2_forma
 }
 
 static int vidioc_try_fmt_vid_cap(struct file *file, void *priv, struct v4l2_format *f)
-{	
-	
+{
+
 	struct dev_data *dev = video_drvdata(file);
+
 	pr_info("Inside the function %s\n", __func__);
 	if (f->fmt.pix.pixelformat != V4L2_PIX_FMT_YUYV)
 		v4l2_err(&dev->v4l2_dev, "%s: Unknown format..\n", __func__);
@@ -259,9 +273,10 @@ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv, struct v4l2_for
 
 static int vidioc_s_fmt_vid_cap(struct file *file, void *priv, struct v4l2_format *f)
 {
-	
+
 	struct dev_data *dev = video_drvdata(file);
 	struct vb2_queue *q = &dev->queue;
+
 	pr_info("Inside the function %s\n", __func__);
 	vidioc_try_fmt_vid_cap(file, priv, f);
 
@@ -275,9 +290,10 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *priv, struct v4l2_forma
 
 static int vidioc_enum_framesizes(struct file *file, void *fh, struct v4l2_frmsizeenum *fsize)
 {
-	
+
 	struct yuv_data F_DATA = get_frame_data();
 	struct v4l2_frmsize_discrete size = {F_DATA.width, F_DATA.height};
+
 	pr_info("Inside the function %s\n", __func__);
 	if (fsize->index)
 		return -EINVAL;
@@ -315,8 +331,9 @@ static int vidioc_enum_input(struct file *file, void *priv, struct v4l2_input *i
 
 static int vidioc_g_input(struct file *file, void *priv, unsigned int *i)
 {
-	
+
 	struct dev_data *dev = video_drvdata(file);
+
 	pr_info("Inside the function %s\n", __func__);
 	*i = dev->input;
 	return 0;
@@ -324,8 +341,9 @@ static int vidioc_g_input(struct file *file, void *priv, unsigned int *i)
 
 static int vidioc_s_input(struct file *file, void *priv, unsigned int i)
 {
-	
+
 	struct dev_data *dev = video_drvdata(file);
+
 	pr_info("Inside the function %s\n", __func__);
 	if (i)
 		return -EINVAL;
@@ -336,9 +354,10 @@ static int vidioc_s_input(struct file *file, void *priv, unsigned int i)
 
 static int vidioc_g_parm(struct file *file, void *priv, struct v4l2_streamparm *parm)
 {
-	
+
 	struct v4l2_fract tpf;
 	struct dev_data *dev = video_drvdata(file);
+
 	pr_info("Inside the function %s\n", __func__);
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
 		return -EINVAL;
@@ -352,9 +371,10 @@ static int vidioc_g_parm(struct file *file, void *priv, struct v4l2_streamparm *
 
 static int vidioc_s_parm(struct file *file, void *priv, struct v4l2_streamparm *parm)
 {
-	
+
 	struct v4l2_fract tpf;
 	struct dev_data *dev = video_drvdata(file);
+
 	pr_info("Inside the function %s\n", __func__);
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
 		return -EINVAL;
@@ -378,7 +398,7 @@ static const struct v4l2_ioctl_ops yuv_ioctl_ops = {
 	.vidioc_s_input			= vidioc_s_input,
 	.vidioc_g_parm			= vidioc_g_parm,
 	.vidioc_s_parm			= vidioc_s_parm,
-	.vidioc_reqbufs			= vb2_ioctl_reqbufs,
+	//.vidioc_reqbufs			= vb2_ioctl_reqbufs,
 	.vidioc_create_bufs		= vb2_ioctl_create_bufs,
 	.vidioc_prepare_buf		= vb2_ioctl_prepare_buf,
 	.vidioc_querybuf		= vb2_ioctl_querybuf,
@@ -392,6 +412,28 @@ static const struct v4l2_ioctl_ops yuv_ioctl_ops = {
 	.vidioc_unsubscribe_event	= v4l2_event_unsubscribe,
 };
 
+int vb2_ioctl_reqbufs(struct file *file, void *priv, struct v4l2_requestbuffers *p)
+{
+	pr_info("Inside the function %s\n", __func__);
+	struct video_device *vdev = video_devdata(file);
+	int res = vb2_verify_memory_type(vdev->queue, p->memory, p->type);
+	u32 flags = p->flags;
+
+	fill_buf_caps(vdev->queue, &p->capabilities);
+	validate_memory_flags(vdev->queue, p->memory, &flags);
+	p->flags = flags;
+	if (res)
+		return res;
+	if (vb2_queue_is_busy(vdev, file))
+		return -EBUSY;
+	res = vb2_core_reqbufs(vdev->queue, p->memory, p->flags, &p->count);
+	/* If count == 0, then the owner has released all buffers and he
+	   is no longer owner of the queue. Otherwise we have a new owner. */
+	if (res == 0)
+		vdev->queue->owner = p->count ? file->private_data : NULL;
+	return res;
+}
+
 static const struct v4l2_file_operations yuv_fops = {
 	.owner				= THIS_MODULE,
 	.open				= v4l2_fh_open,
@@ -404,11 +446,12 @@ static const struct v4l2_file_operations yuv_fops = {
 
 static int p_probe(struct platform_device *pdev)
 {
-	
+
 	struct dev_data *dev;
 	struct video_device *vdev;
 	struct vb2_queue *q;
 	int ret;
+
 	pr_info("Inside the function %s\n", __func__);
 	dev_info(&pdev->dev, "%s: probe function\n", __func__);
 	dev = devm_kzalloc(&pdev->dev, sizeof(struct dev_data), GFP_KERNEL);
@@ -476,8 +519,8 @@ static int p_probe(struct platform_device *pdev)
 
 static int p_remove(struct platform_device *pdev)
 {
-	
 	struct dev_data *dev;
+
 	pr_info("Inside the function %s\n", __func__);
 	dev_info(&pdev->dev, "%s: remove function\n", __func__);
 	dev = platform_get_drvdata(pdev);
@@ -499,6 +542,7 @@ static struct platform_driver p_driver = {
 static int __init v4l2_init(void)
 {
 	int ret;
+
 	pr_info("%s: Inserting V4L2 driver module\n", __func__);
 	ret = platform_device_register(&p_device);
 	if (ret) {

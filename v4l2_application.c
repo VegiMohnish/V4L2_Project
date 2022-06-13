@@ -51,8 +51,8 @@ int main(int argc, char *argv[])
 	int err[10];
 	int m,l,count=0;
 	int frame_index[120];
-	int yuv_height[10];
-	int yuv_width[10];
+	//int yuv_height[10];
+	//int yuv_width[10];
 	int size, fract;
 	unsigned int yuv_width_size, width_size;
 	unsigned char *buf1, *buf2, *buf[10];
@@ -65,10 +65,12 @@ int main(int argc, char *argv[])
 	};
 	*/
 	char yuv_files[10][20] = {"YUV/1.yuv","YUV/2.yuv","YUV/3.yuv","YUV/4.yuv","YUV/5.yuv","YUV/6.yuv","YUV/7.yuv","YUV/8.yuv","YUV/9.yuv","YUV/10.yuv"};
+	/*
 	for(i=0;i<10;i++) {
 		yuv_height[i] = 480;
 		yuv_width[i] = 640;
 	}
+	*/
 	v4l2_fd = open("/dev/frame_feed",O_RDWR);
 	if (v4l2_fd < 0) {
 		fprintf(stdout,"Cannot open device file...\n");
@@ -87,6 +89,7 @@ int main(int argc, char *argv[])
 	width_size = data.width << 1;
 	buf1 = malloc(yuv_width_size);
 	buf2 = malloc(width_size);
+	//while(1) {
 	for(i=0;i<10;i++) {
 		//ioctl call to send frame details
 		ioctl(v4l2_fd, 0, &data);
@@ -169,14 +172,16 @@ int main(int argc, char *argv[])
 		*/
 		}
 		munmap(buf[i],size);
+		
 		//free(buf1);
 		//free(buf2);
 		close(i_fd[i]);
 		printf("Data write is completed for YUV file %d\n",i+1);
 
 	}	
-	free(buf1);
-	free(buf2);
+	//}
+	//free(buf1);
+	//free(buf2);
 	
 	close(v4l2_fd);
 	
